@@ -5,8 +5,8 @@ Shared monitoring agent configuration for deploying to remote VPS nodes. This ag
 ## Components
 
 - **[Grafana Alloy](https://grafana.com/docs/alloy/latest/)**: Unified telemetry collector (logs + metrics)
-- **[Node Exporter](https://github.com/prometheus/node_exporter)**: Host-level metrics (CPU, memory, disk, network)
-- **[cAdvisor](https://github.com/google/cadvisor)**: Container-level metrics (CPU throttling, memory, OOM kills)
+  - **Node Exporter** (Built-in): Host-level metrics (CPU, memory, disk, network)
+  - **cAdvisor** (Built-in): Container-level metrics (CPU throttling, memory, OOM kills)
 
 ## What It Collects
 
@@ -64,15 +64,15 @@ docker compose up -d
 ### 4. Verify Deployment
 
 ```bash
-# Check container status
+# Check container status (Only Alloy should be running)
 docker compose ps
 
 # View Alloy logs
 docker compose logs -f alloy
 
-# Check metrics are being scraped
-curl http://localhost:9100/metrics  # Node Exporter
-curl http://localhost:8080/metrics  # cAdvisor
+# Check component health via Alloy UI
+# Local: http://localhost:12345
+# Remote: ssh -L 12345:localhost:12345 user@vps
 ```
 
 ### 5. Access Live Debugging UI
@@ -148,18 +148,13 @@ http://localhost:12345
 │  │   Docker Containers              │  │
 │  │   (app, db, etc.)                │  │
 │  └──────────┬───────────────────────┘  │
-│             │ logs                     │
+│             │ logs & stats             │
 │             ▼                          │
 │  ┌──────────────────────────────────┐  │
 │  │   Grafana Alloy                  │  │
 │  │   - Collects Docker logs         │  │
-│  │   - Scrapes Node Exporter        │  │
-│  │   - Scrapes cAdvisor             │  │
-│  └──────────┬───────────────────────┘  │
-│             │                          │
-│  ┌──────────┴───────────────────────┐  │
-│  │   Node Exporter   │   cAdvisor   │  │
-│  │   (host metrics)  │   (container)│  │
+│  │   - Internal Node Exporter       │  │
+│  │   - Internal cAdvisor            │  │
 │  └──────────────────────────────────┘  │
 └─────────────┬───────────────────────────┘
               │ Tailscale VPN
@@ -276,9 +271,8 @@ ls -la /var/run/docker.sock
 
 **Check network connectivity**:
 ```bash
-# From inside the Alloy container
-docker exec -it alloy wget -O- http://node-exporter:9100/metrics
-docker exec -it alloy wget -O- http://cadvisor:8080/metrics
+# From inside the Alloy container (if you enabled check_collectors)
+# Otherwise check the Alloy Debug UI at http://localhost:12345
 ```
 
 **Check remote write endpoint**:
@@ -497,7 +491,7 @@ If you're new to Grafana Alloy or want to learn more about the components used i
 - [Monitor Structured Logs](https://grafana.com/docs/alloy/latest/monitor/monitor-structured-logs/) - Working with JSON logs
 
 ## Configuration
-- `config.alloy` scans for `node-exporter:9100` and `cadvisor:8080`.
+- `config.alloy` runs built-in `unix` (node) and `cadvisor` exporters.
 - It collects all Docker container logs via the unix socket.
 - Metrics and logs are forwarded to the central Mimir and Loki instances.
 

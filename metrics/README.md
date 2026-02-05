@@ -7,32 +7,32 @@ Central monitoring infrastructure for collecting, storing, and visualizing metri
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Central Metrics Stack                    │
-│                                                              │
+│                                                             │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │              Grafana Alloy (Collector)                 │ │
-│  │  ┌──────────────────┐  ┌──────────────────────────┐   │ │
-│  │  │ Log Collection   │  │  Metrics Collection      │   │ │
-│  │  │ • Docker logs    │  │  • Node Exporter         │   │ │
-│  │  │ • Cloudflare API │  │  • cAdvisor              │   │ │
-│  │  └────────┬─────────┘  │  • Built-in Postgres     │   │ │
-│  │           │            │  • Redis exporters       │   │ │
-│  │           │            │  • MySQL exporters       │   │ │
-│  │           │            │  • Service exporters     │   │ │
-│  │           │            └──────────┬───────────────┘   │ │
-│  └───────────┼───────────────────────┼───────────────────┘ │
-│              │                       │                     │
-│              ▼                       ▼                     │
-│  ┌──────────────────┐   ┌──────────────────────────┐      │
-│  │      Loki        │   │         Mimir            │      │
-│  │  (Log Storage)   │   │    (Metric Storage)      │      │
-│  └──────────┬───────┘   └──────────┬───────────────┘      │
-│             │                      │                       │
-│             └──────────┬───────────┘                       │
-│                        ▼                                   │
-│             ┌──────────────────┐                           │
-│             │     Grafana      │                           │
-│             │   (Dashboards)   │                           │
-│             └──────────────────┘                           │
+│  │  ┌──────────────────┐  ┌──────────────────────────┐    │ │
+│  │  │ Log Collection   │  │  Metrics Collection      │    │ │
+│  │  │ • Docker logs    │  │  • Built-in Exporters    │    │ │
+│  │  │ • Cloudflare API │  │    (Unix, cAdvisor,      │    │ │
+│  │  └────────┬─────────┘  │     Postgres, Redis)     │    │ │
+│  │           │            │  • Service Exporters     │    │ │
+│  │           │            │    (IRC, Prosody, etc)   │    │ │
+│  │           │            │                          │    │ │
+│  │           │            └──────────┬───────────────┘    │ │
+│  └───────────┼───────────────────────┼────────────────────┘ │
+│              │                       │                      │
+│              ▼                       ▼                      │
+│  ┌──────────────────┐   ┌──────────────────────────┐        │
+│  │      Loki        │   │         Mimir            │        │
+│  │  (Log Storage)   │   │    (Metric Storage)      │        │
+│  └──────────┬───────┘   └──────────┬───────────────┘        │
+│             │                      │                        │
+│             └──────────┬───────────┘                        │
+│                        ▼                                    │
+│             ┌──────────────────┐                            │
+│             │     Grafana      │                            │
+│             │   (Dashboards)   │                            │
+│             └──────────────────┘                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -43,7 +43,7 @@ Central monitoring infrastructure for collecting, storing, and visualizing metri
 - **[Grafana Alloy](https://grafana.com/docs/alloy/latest/)**: Unified telemetry collector
   - Collects logs from Docker containers and Cloudflare Workers
   - Scrapes metrics from exporters and services
-  - Built-in postgres exporter for database metrics
+  - Built-in exporters for host, containers, databases (Postgres/Redis)
   - Forwards to Loki and Mimir
 
 ### Data Storage
@@ -66,13 +66,15 @@ Central monitoring infrastructure for collecting, storing, and visualizing metri
 
 ### Exporters
 
+
+
 **Built-in to Alloy:**
-- `prometheus.exporter.postgres` - PostgreSQL metrics (XMPP, Tux, ISO databases)
+- **Node Exporter** (Unix) - Host-level metrics (CPU, memory, disk, network)
+- **cAdvisor** - Container-level metrics (resource usage, throttling)
+- **Postgres Exporter** - PostgreSQL metrics (XMPP, Tux, ISO databases)
+- **Redis Exporter** - Valkey/Redis metrics (Tux, Wiki)
 
 **External Containers:**
-- **Node Exporter** - Host-level metrics (CPU, memory, disk, network)
-- **cAdvisor** - Container-level metrics (resource usage, throttling)
-- **Redis Exporter** - Valkey/Redis metrics (Tux, Wiki)
 - **MySQL Exporter** - MariaDB metrics (Wiki)
 - **Nginx Exporter** - Nginx metrics (Wiki)
 - **Cloudflare Exporter** - Cloudflare API metrics
@@ -164,17 +166,23 @@ http://localhost:3000
 
 ## Key Features
 
-### Built-in Postgres Exporter
+### Built-in Exporters
 
-Instead of running 3 separate postgres-exporter containers, we use Alloy's built-in exporter:
+We have replaced 9 external exporter containers with Alloy's built-in components:
+
+**Consolidated Components:**
+- **Node Exporter**: Host metrics (Unix exporter)
+- **cAdvisor**: Container metrics
+- **Postgres**: Database metrics (3 instances)
+- **Redis**: Database metrics (2 instances)
 
 **Benefits:**
-- ✅ Fewer containers (-3 containers, ~300MB RAM saved)
-- ✅ Simplified configuration
-- ✅ Centralized management
-- ✅ Consistent labeling
+- ✅ Fewer containers (-9 containers, ~900MB RAM saved)
+- ✅ Simplified configuration in a single Alloy file
+- ✅ Centralized management and lifecycle
+- ✅ Consistent labeling and scraping pipeline
 
-**Configuration:**
+**Example Configuration (Postgres):**
 ```alloy
 prometheus.exporter.postgres "databases" {
   data_source_names = [
