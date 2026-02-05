@@ -1,4 +1,23 @@
-// Logging: Collect Docker container logs
+// ============================================
+// GRAFANA ALLOY - CENTRAL METRICS STACK
+// ============================================
+// This configuration collects telemetry from the central atl.services stack
+// and forwards it to Mimir (metrics) and Loki (logs).
+//
+// Pipeline Architecture:
+//   Logs:    loki.source.docker → loki.process → loki.write → Loki
+//   Metrics: prometheus.scrape → prometheus.remote_write → Mimir
+//
+// Reference: https://grafana.com/docs/alloy/latest/collect/
+// ============================================
+
+// ============================================
+// LOGGING PIPELINE
+// ============================================
+
+// Collect Docker container logs from all running containers
+// Component: loki.source.docker
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.docker/
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
   targets    = []
@@ -10,7 +29,10 @@ loki.source.docker "containers" {
   }
 }
 
-// Log Scrubbing: Mask sensitive data
+// Process logs to scrub sensitive data (PII, credentials, etc.)
+// This is a production-readiness step to prevent leaking sensitive information
+// Component: loki.process
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/
 loki.process "scrub_logs" {
   forward_to = [loki.write.default.receiver]
   
@@ -24,22 +46,22 @@ loki.process "scrub_logs" {
   }
 }
 
-// Logging: Forward to Loki
+// Forward processed logs to Loki
+// Component: loki.write
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/
 loki.write "default" {
   endpoint {
     url = "http://loki:3100/loki/api/v1/push"
   }
 }
 
-// Tracing: Receive OTLP traces and forward to Tempo (if enabled) or discard/log 
-// Note: Tempo was removed, so we point to nowhere or maybe just log for now?
-// Actually the previous config pointed to 100.64.2.0:4317 which is self.
-// Since Tempo is removed from the stack, we should probably remove this or point to DevNull 
-// But let's leave OTLP receiver for future use, just dropping output or logging.
-// Wait, user might want to add Tempo later. For now let's keep it minimal or remove trace section if unused.
-// Previous plan had "Forward to Tempo". Since Tempo is removed, I will comment this out or remove.
+// ============================================
+// METRICS PIPELINE
+// ============================================
 
-// Metrics: Forward to Mimir
+// Forward metrics to Grafana Mimir (Prometheus-compatible remote write)
+// Component: prometheus.remote_write
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/
 prometheus.remote_write "default" {
   endpoint {
     url = "http://mimir:8080/api/v1/push"
@@ -47,23 +69,37 @@ prometheus.remote_write "default" {
 }
 
 // ============================================
-// Scrape Jobs (Migrated from prometheus.yml)
+// METRICS SCRAPE JOBS
+// ============================================
+// These jobs collect metrics from various exporters and services.
+// Pattern: prometheus.scrape → prometheus.remote_write → Mimir
+// Reference: https://grafana.com/docs/alloy/latest/collect/prometheus-metrics/
+
+// ============================================
+// Host & Container Metrics
 // ============================================
 
-// Local System
+// Node Exporter: Host-level metrics (CPU, memory, disk, network)
+// Provides the foundation for infrastructure monitoring
 prometheus.scrape "node_exporter" {
   targets = [{"__address__" = "node-exporter:9100"}]
   job_name = "node-exporter"
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
+// cAdvisor: Container-level metrics (CPU throttling, memory usage, OOM kills)
+// Essential for detecting container resource issues
 prometheus.scrape "cadvisor" {
   targets = [{"__address__" = "cadvisor:8080"}]
   job_name = "cadvisor"
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
-// Service Exporters
+// ============================================
+// Database & Service Exporters
+// ============================================
+// Collect metrics from database and service-specific exporters
+// Each exporter provides deep insights into service health
 prometheus.scrape "service_exporters" {
   targets = [
     {"__address__" = "postgres-exporter-xmpp:9187", "job" = "postgres-xmpp"},
@@ -78,7 +114,10 @@ prometheus.scrape "service_exporters" {
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
-// Local Services
+// ============================================
+// Application Services
+// ============================================
+// Services that expose Prometheus metrics directly
 prometheus.scrape "local_services" {
   targets = [
     {"__address__" = "gatus:8080", "job" = "gatus"},
@@ -89,12 +128,11 @@ prometheus.scrape "local_services" {
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
-// Metrics from Chat Stack (Prosody & IRC)
-// Note: These targets are reachable via network alias or IP in the same compose network if they are in the same network.
-// If they are on other VPSs, we rely on Alloy on THOSE VPSs to push to Mimir.
-// BUT: The user's `prometheus.yml` had targets like `atl-xmpp-server:5280`. 
-// If these are running in THIS stack's network (e.g. atl-chat network is attached), we can scrape them.
-// compose.yaml has `atl-chat`, `tux`, `wiki-network` attached. So we can scrape them!
+// ============================================
+// Cross-Stack Service Metrics
+// ============================================
+// These services run in other stacks but are accessible via shared Docker networks
+// (atl-chat, tux, wiki-network are attached to this stack)
 
 prometheus.scrape "prosody" {
   targets = [{"__address__" = "atl-xmpp-server:5280"}]
@@ -123,8 +161,12 @@ prometheus.scrape "minio_wiki" {
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
-// Blackbox Exporter - Monitor Endpoints
-// We need to define the targets and relabel them to use the blackbox exporter
+// ============================================
+// Black-Box Monitoring (Synthetic Checks)
+// ============================================
+// Probes external endpoints to verify availability and response times
+// This implements "symptom-based monitoring" - what users actually experience
+// Reference: https://grafana.com/docs/alloy/latest/collect/prometheus-metrics/#collect-metrics-from-custom-targets
 
 prometheus.scrape "blackbox" {
   targets = [
@@ -136,7 +178,8 @@ prometheus.scrape "blackbox" {
   metrics_path = "/probe"
   job_name = "blackbox"
   
-  // Relabeling to pass target param
+  // Relabeling: Transform targets for blackbox exporter
+  // Pattern: __address__ → __param_target, then replace __address__ with exporter location
   relabel_rules {
     source_labels = ["__address__"]
     target_label  = "__param_target"
@@ -157,6 +200,7 @@ prometheus.scrape "blackbox" {
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
+// Scrape the blackbox exporter's own metrics (meta-monitoring)
 prometheus.scrape "blackbox_exporter" {
   targets = [{"__address__" = "blackbox:9115"}]
   job_name = "blackbox-exporter"

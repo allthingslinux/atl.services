@@ -1,13 +1,39 @@
-// Shared Alloy Configuration for Remote Agents
-// Collects: Node Exporter, cAdvisor, Docker Logs
-// Forwards to: Central Mimir and Loki
+// ============================================
+// GRAFANA ALLOY - REMOTE MONITORING AGENT
+// ============================================
+// This configuration is deployed to remote VPS nodes to collect host metrics,
+// container metrics, and Docker logs, then forward them to the central stack.
+//
+// Deployment Locations:
+//   - atl.network (NPM, Coturn, Blocky, Gatus, SFTPGo, etc.)
+//   - atl.chat (IRC, XMPP, Bridge, PostgreSQL)
+//   - atl.wiki (MediaWiki, MariaDB, Valkey, MinIO)
+//   - dev-tux (Discord bot, PostgreSQL, Valkey)
+//   - iso.atl.dev (Keycloak, PostgreSQL)
+//
+// Pipeline Architecture:
+//   Logs:    loki.source.docker → loki.process → loki.write → Central Loki
+//   Metrics: prometheus.scrape → prometheus.remote_write → Central Mimir
+//
+// Required Environment Variables:
+//   HOSTNAME           - Unique identifier for this host (e.g., "atl-chat")
+//   LOKI_URL           - Central Loki endpoint (e.g., "http://100.x.x.x:3100/loki/api/v1/push")
+//   REMOTE_WRITE_URL   - Central Mimir endpoint (e.g., "http://100.x.x.x:8080/api/v1/push")
+//   BASIC_AUTH_USER    - (Optional) Basic auth username if central stack requires it
+//   BASIC_AUTH_PASS    - (Optional) Basic auth password if central stack requires it
+//
+// Reference: https://grafana.com/docs/alloy/latest/collect/
+// ============================================
 
 // ============================================
-// Logging: Collect Docker logs
+// LOGGING PIPELINE
 // ============================================
+// Collect logs from all Docker containers on this host
+// Component: loki.source.docker
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.docker/
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
-  targets    = []
+  targets    = []  // Empty = collect from all containers
   forward_to = [loki.process.add_labels.receiver]
   
   relabel_rules {
@@ -16,22 +42,30 @@ loki.source.docker "containers" {
   }
 }
 
+// Add host-specific labels to all log entries
+// This ensures logs from different hosts can be distinguished in Loki
+// Component: loki.process
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/
 loki.process "add_labels" {
   forward_to = [loki.write.default.receiver]
 
-  // Add static labels for the host
+  // Add static labels identifying this host
   stage.static_labels {
       values = {
-        instance = sys.env("HOSTNAME"),
+        instance = sys.env("HOSTNAME"),  // e.g., "atl-chat", "atl-network"
         job      = "docker-logs",
       }
   }
 }
 
+// Forward logs to central Loki instance
+// Component: loki.write
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/
 loki.write "default" {
   endpoint {
-    url = sys.env("LOKI_URL")
-    // Basic Auth if needed
+    url = sys.env("LOKI_URL")  // e.g., "http://100.64.2.0:3100/loki/api/v1/push"
+    
+    // Uncomment if central stack requires basic authentication
     // basic_auth {
     //   username = sys.env("BASIC_AUTH_USER")
     //   password = sys.env("BASIC_AUTH_PASS")
@@ -40,43 +74,53 @@ loki.write "default" {
 }
 
 // ============================================
-// Metrics: Scrape Local Exporters
+// METRICS PIPELINE
 // ============================================
 
+// Scrape Node Exporter for host-level metrics (CPU, memory, disk, network)
+// Component: prometheus.scrape
+// Reference: https://grafana.com/docs/alloy/latest/collect/prometheus-metrics/
 prometheus.scrape "node_exporter" {
   targets = [{"__address__" = "node-exporter:9100"}]
   job_name = "node-exporter"
   
-  // Add instance label
+  // Override instance label with hostname for multi-host identification
   relabel_rules {
     target_label = "instance"
-    replacement  = sys.env("HOSTNAME")
+    replacement  = sys.env("HOSTNAME")  // e.g., "atl-chat"
   }
   
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
+// Scrape cAdvisor for container-level metrics (CPU throttling, memory, OOM kills)
+// Component: prometheus.scrape
+// Reference: https://grafana.com/docs/alloy/latest/collect/prometheus-metrics/
 prometheus.scrape "cadvisor" {
   targets = [{"__address__" = "cadvisor:8080"}]
   job_name = "cadvisor"
 
-  // Add instance label
+  // Override instance label with hostname for multi-host identification
   relabel_rules {
     target_label = "instance"
-    replacement  = sys.env("HOSTNAME")
+    replacement  = sys.env("HOSTNAME")  // e.g., "atl-network"
   }
 
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
 // ============================================
-// Forwarding: Send to Central Mimir
+// METRICS FORWARDING
 // ============================================
 
+// Forward metrics to central Grafana Mimir instance
+// Component: prometheus.remote_write
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/
 prometheus.remote_write "default" {
   endpoint {
-    url = sys.env("REMOTE_WRITE_URL")
-    // Basic Auth if needed
+    url = sys.env("REMOTE_WRITE_URL")  // e.g., "http://100.64.2.0:8080/api/v1/push"
+    
+    // Uncomment if central stack requires basic authentication
     // basic_auth {
     //   username = sys.env("BASIC_AUTH_USER")
     //   password = sys.env("BASIC_AUTH_PASS")

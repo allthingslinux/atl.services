@@ -1,31 +1,164 @@
-# Monitoring Agent
+# ATL Monitoring Agent
 
-This directory contains the shared monitoring agent configuration for deployment to all VPS nodes in the All Things Linux infrastructure.
+Shared monitoring agent configuration for deploying to remote VPS nodes. This agent collects host metrics, container metrics, and Docker logs, then forwards them to the central metrics stack.
 
 ## Components
-- **Grafana Alloy**: Telemetry collector (Logs & Metrics).
-- **Node Exporter**: Host hardware and OS metrics.
-- **cAdvisor**: Docker container metrics.
 
-## Deployment Instructions
+- **[Grafana Alloy](https://grafana.com/docs/alloy/latest/)**: Unified telemetry collector (logs + metrics)
+- **[Node Exporter](https://github.com/prometheus/node_exporter)**: Host-level metrics (CPU, memory, disk, network)
+- **[cAdvisor](https://github.com/google/cadvisor)**: Container-level metrics (CPU throttling, memory, OOM kills)
 
-1.  **Copy this directory** to the target server (e.g., `/opt/monitoring`).
+## What It Collects
+
+### Metrics (forwarded to Mimir)
+- **Host Metrics**: CPU, memory, disk, network, load average from Node Exporter
+- **Container Metrics**: Per-container resource usage, throttling, OOM events from cAdvisor
+
+### Logs (forwarded to Loki)
+- **Docker Logs**: All container logs with automatic labeling (`container`, `instance`, `job`)
+
+## Deployment
+
+### 1. Copy Agent to VPS
+
+```bash
+scp -r agent/ user@vps:/opt/monitoring/
+cd /opt/monitoring/agent
+```
+
+### 2. Configure Environment Variables
+
+Create a `.env` file with the following variables:
+
+```bash
+# Required: Unique hostname identifier for this VPS
+HOSTNAME=atl-chat
+
+# Required: Central Loki endpoint (Tailscale IP recommended)
+LOKI_URL=http://100.64.2.0:3100/loki/api/v1/push
+
+# Required: Central Mimir endpoint (Tailscale IP recommended)
+REMOTE_WRITE_URL=http://100.64.2.0:8080/api/v1/push
+
+# Optional: Basic auth credentials (if central stack requires authentication)
+# BASIC_AUTH_USER=your-username
+# BASIC_AUTH_PASS=your-password
+```
+
+**Environment Variable Reference:**
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|----------|
+| `HOSTNAME` | ✅ | Unique identifier for this host | `atl-chat`, `atl-network` |
+| `LOKI_URL` | ✅ | Central Loki push endpoint | `http://100.64.2.0:3100/loki/api/v1/push` |
+| `REMOTE_WRITE_URL` | ✅ | Central Mimir remote write endpoint | `http://100.64.2.0:8080/api/v1/push` |
+| `BASIC_AUTH_USER` | ❌ | Basic auth username (if needed) | `metrics-agent` |
+| `BASIC_AUTH_PASS` | ❌ | Basic auth password (if needed) | `your-secure-password` |
+
+### 3. Deploy the Stack
+
+```bash
+docker compose up -d
+```
+
+### 4. Verify Deployment
+
+```bash
+# Check container status
+docker compose ps
+
+# View Alloy logs
+docker compose logs -f alloy
+
+# Check metrics are being scraped
+curl http://localhost:9100/metrics  # Node Exporter
+curl http://localhost:8080/metrics  # cAdvisor
+```
+
+## Troubleshooting
+
+### Logs Not Appearing in Loki
+
+1. **Check Alloy logs**: `docker compose logs alloy`
+2. **Verify LOKI_URL**: Ensure the central Loki endpoint is reachable
+3. **Test connectivity**: `curl -v $LOKI_URL`
+4. **Check firewall**: Ensure port 3100 is accessible from this VPS
+
+### Metrics Not Appearing in Mimir
+
+1. **Check Alloy logs**: `docker compose logs alloy`
+2. **Verify REMOTE_WRITE_URL**: Ensure the central Mimir endpoint is reachable
+3. **Test connectivity**: `curl -v $REMOTE_WRITE_URL`
+4. **Check firewall**: Ensure port 8080 is accessible from this VPS
+
+### Alloy Configuration Errors
+
+1. **Validate config syntax**:
    ```bash
-   scp -r metrics/agent user@target-server:/opt/monitoring
+   docker compose exec alloy alloy fmt config.alloy
+   ```
+2. **Check for missing environment variables**:
+   ```bash
+   docker compose config
    ```
 
-2.  **Create an `.env` file** in the directory:
-   ```bash
-   HOSTNAME=target-server-name
-   # Optional: If auth is enabled on the central stack
-   # BASIC_AUTH_USER=
-   # BASIC_AUTH_PASS=
-   ```
+### Container Won't Start
 
-3.  **Start the stack**:
-   ```bash
-   docker compose up -d
-   ```
+1. **Check Docker socket permissions**: Ensure `/var/run/docker.sock` is accessible
+2. **Review compose logs**: `docker compose logs`
+3. **Verify .env file**: Ensure all required variables are set
+
+## Architecture
+
+```
+┌─────────────────────────────────────────┐
+│           Remote VPS Host               │
+│                                         │
+│  ┌──────────────────────────────────┐  │
+│  │   Docker Containers              │  │
+│  │   (app, db, etc.)                │  │
+│  └──────────┬───────────────────────┘  │
+│             │ logs                     │
+│             ▼                          │
+│  ┌──────────────────────────────────┐  │
+│  │   Grafana Alloy                  │  │
+│  │   - Collects Docker logs         │  │
+│  │   - Scrapes Node Exporter        │  │
+│  │   - Scrapes cAdvisor             │  │
+│  └──────────┬───────────────────────┘  │
+│             │                          │
+│  ┌──────────┴───────────────────────┐  │
+│  │   Node Exporter   │   cAdvisor   │  │
+│  │   (host metrics)  │   (container)│  │
+│  └──────────────────────────────────┘  │
+└─────────────┬───────────────────────────┘
+              │ Tailscale VPN
+              ▼
+┌─────────────────────────────────────────┐
+│      Central Metrics Stack              │
+│      (atl.services)                     │
+│                                         │
+│  ┌──────────────┐   ┌──────────────┐   │
+│  │    Loki      │   │    Mimir     │   │
+│  │   (logs)     │   │  (metrics)   │  │
+│  └──────────────┘   └──────────────┘   │
+│           │                 │           │
+│           └────────┬────────┘           │
+│                    ▼                    │
+│           ┌──────────────┐              │
+│           │   Grafana    │              │
+│           │ (dashboards) │              │
+│           └──────────────┘              │
+└─────────────────────────────────────────┘
+```
+
+## References
+
+- [Grafana Alloy Documentation](https://grafana.com/docs/alloy/latest/)
+- [Collect Prometheus Metrics](https://grafana.com/docs/alloy/latest/collect/prometheus-metrics/)
+- [Collect Logs with Loki](https://grafana.com/docs/alloy/latest/reference/components/loki/)
+- [Node Exporter Guide](https://prometheus.io/docs/guides/node-exporter/)
+- [cAdvisor Documentation](https://github.com/google/cadvisor/blob/master/docs/storage/prometheus.md)
 
 ## Configuration
 - `config.alloy` scans for `node-exporter:9100` and `cadvisor:8080`.
