@@ -190,6 +190,294 @@ http://localhost:12345
 - [Node Exporter Guide](https://prometheus.io/docs/guides/node-exporter/)
 - [cAdvisor Documentation](https://github.com/google/cadvisor/blob/master/docs/storage/prometheus.md)
 
+## Troubleshooting & Monitoring
+
+### Debug UI Features
+
+Alloy provides a powerful debugging UI at `http://localhost:12345` with the following capabilities:
+
+#### Component Health Dashboard
+- **Home Page**: View all components and their health status at a glance
+- **Component Details**: Click any component to see:
+  - Current health status with detailed messages
+  - Evaluated arguments and exports
+  - Debug information (when available)
+- **Graph View**: Visual representation of component dependencies and data flow
+
+#### Live Debugging
+With `livedebugging { enabled = true }` in your config, you can:
+- Stream real-time component data
+- Pause and search through data streams
+- Monitor data flow through pipelines
+- Identify bottlenecks and issues in real-time
+
+**Supported components**: `loki.source.docker`, `loki.process`, `prometheus.scrape`, `prometheus.remote_write`, `discovery.*`, and more.
+
+### Metrics & Profiling
+
+#### Internal Metrics
+Alloy exposes Prometheus metrics at `http://localhost:12345/metrics`:
+
+**Controller Metrics**:
+- `alloy_component_controller_running_components` - Component count by health
+- `alloy_component_evaluation_seconds` - Component evaluation latency
+- `alloy_component_evaluation_queue_size` - Pending evaluations
+
+**Component-Specific Metrics**:
+- Each component exposes metrics with `component_id` label
+- Example: `prometheus.remote_write` exposes queue size, send rate, retry metrics
+- Check component documentation for available metrics
+
+#### Profiling & Diagnostics
+
+**CPU/Memory Profiling**:
+```bash
+# Collect CPU profile (30 seconds)
+curl http://localhost:12345/debug/pprof/profile?seconds=30 -o cpu.pprof
+
+# Collect memory profile
+curl http://localhost:12345/debug/pprof/heap -o heap.pprof
+
+# Collect goroutine profile
+curl http://localhost:12345/debug/pprof/goroutine -o goroutine.pprof
+```
+
+**Support Bundle**:
+```bash
+# Generate comprehensive diagnostic bundle
+curl http://localhost:12345/-/support?duration=60 -o support-bundle.tar.gz
+```
+
+Contains: component info, logs, metrics snapshots, pprof data, config files, and runtime flags.
+
+### Common Issues
+
+#### Container Won't Start
+
+**Symptom**: Alloy container exits immediately or fails to start.
+
+**Check Docker socket permissions**:
+```bash
+ls -la /var/run/docker.sock
+# Should show: srw-rw---- 1 root docker
+```
+
+**Solution**: The `compose.yaml` runs Alloy as `user: "0"` (root) to access the Docker socket. This is required for `loki.source.docker` to collect container logs.
+
+> **Security Note**: Running as root is necessary for Docker socket access. Ensure your VPS has proper security measures (firewall, SSH hardening, etc.).
+
+#### No Metrics Appearing in Mimir
+
+**Check component health**:
+1. Open `http://localhost:12345` (or via SSH tunnel)
+2. Verify all components show "Healthy" status
+3. Check `prometheus.scrape` targets are discovered
+4. Verify `prometheus.remote_write` shows successful writes
+
+**Check network connectivity**:
+```bash
+# From inside the Alloy container
+docker exec -it alloy wget -O- http://node-exporter:9100/metrics
+docker exec -it alloy wget -O- http://cadvisor:8080/metrics
+```
+
+**Check remote write endpoint**:
+```bash
+# Verify REMOTE_WRITE_URL is reachable
+curl -v $REMOTE_WRITE_URL
+```
+
+#### No Logs Appearing in Loki
+
+**Check Docker socket access**:
+```bash
+# Verify Alloy can read Docker events
+docker logs alloy | grep -i docker
+```
+
+**Check Loki endpoint**:
+```bash
+# Verify LOKI_URL is reachable
+curl -v $LOKI_URL/ready
+```
+
+**Check component pipeline**:
+1. Open Debug UI → `loki.source.docker` component
+2. Verify targets are discovered
+3. Check `loki.write` component for send errors
+
+#### High Memory/CPU Usage
+
+**Collect diagnostics**:
+```bash
+# Generate support bundle
+curl http://localhost:12345/-/support?duration=120 -o diagnostics.tar.gz
+
+# Or collect specific profiles
+curl http://localhost:12345/debug/pprof/heap -o heap.pprof
+curl http://localhost:12345/debug/pprof/profile?seconds=30 -o cpu.pprof
+```
+
+**Common causes**:
+- High log volume → Increase `loki.write` batch size or reduce scrape targets
+- Slow remote write → Check network latency to central Mimir/Loki
+- Component evaluation backlog → Check `alloy_component_evaluation_queue_size` metric
+
+### Accessing Debug UI Remotely
+
+When deployed on a remote VPS:
+
+```bash
+# SSH tunnel to access UI locally
+ssh -L 12345:localhost:12345 user@your-vps
+
+# Then open in browser
+http://localhost:12345
+```
+
+### Additional Resources
+- [Debug Grafana Alloy](https://grafana.com/docs/alloy/latest/troubleshoot/debug/)
+- [Monitor Components](https://grafana.com/docs/alloy/latest/troubleshoot/component_metrics/)
+- [Profile Resource Consumption](https://grafana.com/docs/alloy/latest/troubleshoot/profile/)
+- [Generate Support Bundle](https://grafana.com/docs/alloy/latest/troubleshoot/support_bundle/)
+
+## Performance Tuning
+
+### Environment Variables
+
+Alloy supports several environment variables to optimize performance in production:
+
+#### Memory Management
+
+**`GOMEMLIMIT`** - Soft memory cap to prevent OOM kills:
+```yaml
+# In compose.yaml
+environment:
+  GOMEMLIMIT: "900MiB"  # Set to ~90% of container memory limit
+```
+
+**Auto-configuration**: Alloy automatically sets `GOMEMLIMIT` to 90% of cgroup limits. Override with `AUTOMEMLIMIT` (0.0-1.0) to adjust the ratio.
+
+**`GOGC`** - Garbage collection trigger percentage (default: 100):
+```yaml
+environment:
+  GOGC: "75"  # More aggressive GC, lower memory usage
+```
+
+Lower values = more frequent GC, less memory. Higher values = less frequent GC, more memory.
+
+#### CPU & Concurrency
+
+**`GOMAXPROCS`** - Limit CPU threads (default: number of CPUs):
+```yaml
+environment:
+  GOMAXPROCS: "2"  # Limit to 2 CPU cores
+```
+
+#### Proxy Configuration
+
+For components with `proxy_from_environment: true`:
+```yaml
+environment:
+  HTTP_PROXY: "http://proxy.example.com:8080"
+  HTTPS_PROXY: "http://proxy.example.com:8080"
+  NO_PROXY: "localhost,127.0.0.1,.local"
+```
+
+### Resource Recommendations
+
+**Minimal VPS** (monitoring only):
+- **Memory**: 512MB (GOMEMLIMIT=450MiB)
+- **CPU**: 1 core
+- **Disk**: 1GB for WAL
+
+**Standard VPS** (monitoring + moderate log volume):
+- **Memory**: 1GB (GOMEMLIMIT=900MiB)
+- **CPU**: 2 cores
+- **Disk**: 5GB for WAL
+
+**High-volume VPS** (many containers, high log rate):
+- **Memory**: 2GB (GOMEMLIMIT=1800MiB)
+- **CPU**: 2-4 cores
+- **Disk**: 10GB for WAL
+
+### Monitoring Resource Usage
+
+Check Alloy's own metrics:
+```bash
+curl -s http://localhost:12345/metrics | grep -E '(go_memstats|process_)'
+```
+
+Key metrics:
+- `go_memstats_heap_inuse_bytes` - Current heap usage
+- `process_resident_memory_bytes` - Total RSS
+- `process_cpu_seconds_total` - CPU time
+
+Refer to [Estimate Resource Usage](https://grafana.com/docs/alloy/latest/introduction/estimate-resource-usage/) and [Environment Variables](https://grafana.com/docs/alloy/latest/reference/cli/environment-variables/) for more details.
+
+## Security Hardening (Optional)
+
+### Protect Debug UI with Authentication
+
+For production deployments, consider protecting the Alloy HTTP server (debug UI, `/metrics` endpoint) with basic authentication:
+
+**Add to `config.alloy`**:
+```alloy
+http {
+  auth {
+    basic {
+      username = sys.env("ALLOY_UI_USERNAME")
+      password = sys.env("ALLOY_UI_PASSWORD")
+    }
+  }
+}
+```
+
+**Add to `.env`**:
+```bash
+ALLOY_UI_USERNAME=admin
+ALLOY_UI_PASSWORD=your-secure-password
+```
+
+### Selective Authentication
+
+Protect only specific endpoints:
+
+```alloy
+http {
+  auth {
+    basic {
+      username = sys.env("ALLOY_UI_USERNAME")
+      password = sys.env("ALLOY_UI_PASSWORD")
+    }
+    
+    // Require auth for UI, but allow unauthenticated /metrics scraping
+    filter {
+      paths                       = ["/metrics"]
+      authenticate_matching_paths = false
+    }
+  }
+}
+```
+
+### TLS Configuration
+
+For encrypted communication (recommended if exposing Alloy outside localhost):
+
+```alloy
+http {
+  tls {
+    cert_file = "/etc/alloy/tls/cert.pem"
+    key_file  = "/etc/alloy/tls/key.pem"
+    min_version = "TLS13"
+  }
+}
+```
+
+**Note**: For internal monitoring on Tailscale, TLS is optional since Tailscale already encrypts traffic.
+
+Refer to [http block documentation](https://grafana.com/docs/alloy/latest/reference/config-blocks/http/) for advanced options.
+
 ## Learning Resources
 
 If you're new to Grafana Alloy or want to learn more about the components used in this configuration, check out these official tutorials:
@@ -211,6 +499,28 @@ If you're new to Grafana Alloy or want to learn more about the components used i
 ## Configuration
 - `config.alloy` scans for `node-exporter:9100` and `cadvisor:8080`.
 - It collects all Docker container logs via the unix socket.
-- Data is pushed to:
-  - Metrics: `https://metrics.atl.services/api/v1/push`
-  - Logs: `https://metrics.atl.services/loki/api/v1/push`
+- Metrics and logs are forwarded to the central Mimir and Loki instances.
+
+### Optional: Customize Logging
+
+By default, Alloy logs to stderr in `logfmt` format at `info` level. To customize:
+
+**Add to `config.alloy`**:
+```alloy
+logging {
+  level  = "debug"  // error, warn, info, debug
+  format = "json"   // logfmt or json
+}
+```
+
+**View logs**:
+```bash
+# Docker container logs
+docker logs alloy
+
+# Follow logs in real-time
+docker logs -f alloy
+```
+
+Refer to [logging block documentation](https://grafana.com/docs/alloy/latest/reference/config-blocks/logging/) for advanced options like sending logs to Loki.
+```

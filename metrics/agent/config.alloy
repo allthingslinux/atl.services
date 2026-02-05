@@ -25,6 +25,9 @@
 // Reference: https://grafana.com/docs/alloy/latest/collect/
 // ============================================
 
+// Note: sys.env() is a standard library function for accessing environment variables
+// Reference: https://grafana.com/docs/alloy/latest/reference/stdlib/sys/
+
 // ============================================
 // LIVE DEBUGGING
 // ============================================
