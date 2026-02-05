@@ -136,15 +136,37 @@ prometheus.scrape "cadvisor" {
 }
 
 // ============================================
+// Built-in Postgres Exporter
+// ============================================
+// Replaces 3 external postgres-exporter containers with a single built-in component
+// Component: prometheus.exporter.postgres
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.postgres/
+prometheus.exporter.postgres "databases" {
+  data_source_names = [
+    // XMPP Database (Prosody)
+    "postgresql://prosody:" + sys.env("XMPP_DB_PASSWORD") + "@atl-xmpp-db:5432/prosody?sslmode=disable",
+    
+    // Tux Database
+    "postgresql://" + sys.env("TUX_DB_USER") + ":" + sys.env("TUX_DB_PASSWORD") + "@tux-postgres:5432/" + sys.env("TUX_DB_NAME") + "?sslmode=disable",
+    
+    // ISO Database (Keycloak)
+    "postgresql://admin:" + sys.env("ISO_DB_PASSWORD") + "@iso_postgres:5432/iso_archive?sslmode=disable",
+  ]
+}
+
+// Scrape the built-in postgres exporter
+prometheus.scrape "postgres" {
+  targets    = prometheus.exporter.postgres.databases.targets
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// ============================================
 // Database & Service Exporters
 // ============================================
 // Collect metrics from database and service-specific exporters
 // Each exporter provides deep insights into service health
 prometheus.scrape "service_exporters" {
   targets = [
-    {"__address__" = "postgres-exporter-xmpp:9187", "job" = "postgres-xmpp"},
-    {"__address__" = "postgres-exporter-tux:9187", "job" = "postgres-tux"},
-    {"__address__" = "postgres-exporter-iso:9187", "job" = "postgres-iso"},
     {"__address__" = "redis-exporter-tux:9121", "job" = "valkey-tux"},
     {"__address__" = "redis-exporter-wiki:9121", "job" = "valkey-wiki"},
     {"__address__" = "mysql-exporter-wiki:9104", "job" = "mariadb-wiki"},

@@ -33,6 +33,9 @@ services:
     restart: unless-stopped
     networks:
       - metrics
+      - atl-chat # Access to atl-xmpp-db
+      - tux # Access to tux-postgres
+      - iso-network # Access to iso_postgres
     ports:
       - "12345:12345" # Alloy UI
       - "4317:4317" # OTLP gRPC
@@ -44,6 +47,12 @@ services:
       # Cloudflare Worker Logs
       - CF_ZONE_ID=${CF_ZONE_ID}
       - CF_API_TOKEN=${CF_API_TOKEN}
+      # Postgres Exporter Credentials
+      - XMPP_DB_PASSWORD=${XMPP_DB_PASSWORD}
+      - TUX_DB_USER=${TUX_DB_USER}
+      - TUX_DB_PASSWORD=${TUX_DB_PASSWORD}
+      - TUX_DB_NAME=${TUX_DB_NAME}
+      - ISO_DB_PASSWORD=${ISO_DB_PASSWORD}
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -206,32 +215,6 @@ services:
       retries: 3
 
   # Service Exporters
-  postgres-exporter-xmpp:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: postgres-exporter-xmpp
-    environment:
-      DATA_SOURCE_NAME: "postgresql://prosody:${XMPP_DB_PASSWORD}@atl-xmpp-db:5432/prosody?sslmode=disable"
-    networks:
-      - atl-chat
-      - metrics
-
-  postgres-exporter-tux:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: postgres-exporter-tux
-    environment:
-      DATA_SOURCE_NAME: "postgresql://${TUX_DB_USER}:${TUX_DB_PASSWORD}@tux-postgres:5432/${TUX_DB_NAME}?sslmode=disable"
-    networks:
-      - tux
-      - metrics
-
-  postgres-exporter-iso:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: postgres-exporter-iso
-    environment:
-      DATA_SOURCE_NAME: "postgresql://admin:${ISO_DB_PASSWORD}@iso_postgres:5432/iso_archive?sslmode=disable"
-    networks:
-      - iso-network
-      - metrics
 
   redis-exporter-tux:
     image: oliver006/redis_exporter:latest
