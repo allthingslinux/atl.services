@@ -1,0 +1,33 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+  
+  - name: Mimir (Long-term)
+    type: prometheus
+    access: proxy
+    url: http://mimir:8080/prometheus
+    editable: false
+  
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+  
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://influxdb2:8086
+    jsonData:
+      version: Flux
+      organization: docs
+      defaultBucket: home
+    secureJsonData:
+      token: ${INFLUXDB_ADMIN_TOKEN}
+    editable: false
