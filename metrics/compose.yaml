@@ -34,8 +34,9 @@ services:
     networks:
       - metrics
       - atl-chat # Access to atl-xmpp-db
-      - tux # Access to tux-postgres
+      - tux # Access to tux-postgres, tux-valkey
       - iso-network # Access to iso_postgres
+      - wiki-network # Access to local-wiki-valkey
     ports:
       - "12345:12345" # Alloy UI
       - "4317:4317" # OTLP gRPC
@@ -213,23 +214,4 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
-
   # Service Exporters
-
-  redis-exporter-tux:
-    image: oliver006/redis_exporter:latest
-    container_name: redis-exporter-tux
-    environment:
-      REDIS_ADDR: "tux-valkey:6379"
-    networks:
-      - tux
-      - metrics
-
-  redis-exporter-wiki:
-    image: oliver006/redis_exporter:latest
-    container_name: redis-exporter-wiki
-    environment:
-      REDIS_ADDR: "local-wiki-valkey:6379"
-    networks:
-      - wiki-network
-      - metrics

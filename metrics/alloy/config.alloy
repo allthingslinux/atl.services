@@ -161,14 +161,39 @@ prometheus.scrape "postgres" {
 }
 
 // ============================================
+// Built-in Redis Exporters
+// ============================================
+// Replaces 2 external redis-exporter containers with built-in components
+// Component: prometheus.exporter.redis
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.redis/
+
+// Tux Valkey (Redis)
+prometheus.exporter.redis "tux" {
+  redis_addr = "tux-valkey:6379"
+}
+
+prometheus.scrape "redis_tux" {
+  targets    = prometheus.exporter.redis.tux.targets
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// Wiki Valkey (Redis)
+prometheus.exporter.redis "wiki" {
+  redis_addr = "local-wiki-valkey:6379"
+}
+
+prometheus.scrape "redis_wiki" {
+  targets    = prometheus.exporter.redis.wiki.targets
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// ============================================
 // Database & Service Exporters
 // ============================================
 // Collect metrics from database and service-specific exporters
 // Each exporter provides deep insights into service health
 prometheus.scrape "service_exporters" {
   targets = [
-    {"__address__" = "redis-exporter-tux:9121", "job" = "valkey-tux"},
-    {"__address__" = "redis-exporter-wiki:9121", "job" = "valkey-wiki"},
     {"__address__" = "mysql-exporter-wiki:9104", "job" = "mariadb-wiki"},
     {"__address__" = "nginx-exporter-wiki:9113", "job" = "nginx-wiki"},
     {"__address__" = "cloudflare-exporter:9199", "job" = "cloudflare-exporter"},
