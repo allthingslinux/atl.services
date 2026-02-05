@@ -127,11 +127,18 @@ prometheus.scrape "node_exporter" {
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
-// cAdvisor: Container-level metrics (CPU throttling, memory usage, OOM kills)
-// Essential for detecting container resource issues
+// Built-in cAdvisor Exporter
+// Component: prometheus.exporter.cadvisor
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cadvisor/
+prometheus.exporter.cadvisor "containers" {
+  docker_host = "unix:///var/run/docker.sock"
+  docker_only = true
+  storage_duration = "5m"
+}
+
 prometheus.scrape "cadvisor" {
-  targets = [{"__address__" = "cadvisor:8080"}]
-  job_name = "cadvisor"
+  targets    = prometheus.exporter.cadvisor.containers.targets
+  job_name   = "cadvisor"
   forward_to = [prometheus.remote_write.default.receiver]
 }
 

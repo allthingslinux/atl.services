@@ -44,6 +44,14 @@ services:
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/lib/alloy:/var/lib/alloy
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
     environment:
       # Cloudflare Worker Logs
       - CF_ZONE_ID=${CF_ZONE_ID}

@@ -109,9 +109,18 @@ prometheus.scrape "node_exporter" {
 // Scrape cAdvisor for container-level metrics (CPU throttling, memory, OOM kills)
 // Component: prometheus.scrape
 // Reference: https://grafana.com/docs/alloy/latest/collect/prometheus-metrics/
+// Built-in cAdvisor Exporter
+// Component: prometheus.exporter.cadvisor
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cadvisor/
+prometheus.exporter.cadvisor "containers" {
+  docker_host = "unix:///var/run/docker.sock"
+  docker_only = true
+  storage_duration = "5m"
+}
+
 prometheus.scrape "cadvisor" {
-  targets = [{"__address__" = "cadvisor:8080"}]
-  job_name = "cadvisor"
+  targets    = prometheus.exporter.cadvisor.containers.targets
+  job_name   = "cadvisor"
 
   // Override instance label with hostname for multi-host identification
   relabel_rules {
