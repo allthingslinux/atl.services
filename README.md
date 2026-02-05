@@ -15,7 +15,6 @@ A modern, monolithic observability stack designed for scale and efficiency.
 |---------|---------|------|
 | **Grafana Mimir** | Long-term metrics storage (S3/R2 backend) | `:8080` |
 | **Grafana Loki** | Log aggregation and querying | `:3100` |
-| **Prometheus** | Metric collection and forwarding (Remote Write) | `:9090` |
 | **Grafana** | Visualization and dashboards | `:3000` |
 | **Grafana Alloy** | Unified telemetry collector (OTLP, Logs, Metrics) | `:12345` |
 | **Alertmanager** | Alert routing and notifications | `:9093` |
@@ -60,7 +59,6 @@ This stack provides services to:
 
 4. **Access Dashboards**:
    - **Grafana**: `http://localhost:3000` (or `https://metrics.atl.services` via public ingress)
-   - **Prometheus**: `http://localhost:9090`
    - **Alloy UI**: `http://localhost:12345`
 
 ## 📡 Service Instrumentation
