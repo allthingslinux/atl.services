@@ -6,6 +6,7 @@
 //
 // Pipeline Architecture:
 //   Logs:    loki.source.docker → loki.process → loki.write → Loki
+//            loki.source.cloudflare → loki.process → loki.write → Loki
 //   Metrics: prometheus.scrape → prometheus.remote_write → Mimir
 //
 // Reference: https://grafana.com/docs/alloy/latest/collect/
@@ -37,6 +38,35 @@ loki.source.docker "containers" {
     source_labels = ["__meta_docker_container_name"]
     target_label  = "container"
   }
+}
+
+// Collect logs from Cloudflare Workers
+// Component: loki.source.cloudflare
+// Reference: https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.cloudflare/
+// Environment Variables:
+//   CF_ZONE_ID   - Cloudflare Zone ID
+//   CF_API_TOKEN - Cloudflare API token with Logs Read permission
+loki.source.cloudflare "workers" {
+  zone_id   = sys.env("CF_ZONE_ID")
+  api_token = sys.env("CF_API_TOKEN")
+  
+  // Use 'minimal' field set for good coverage without excessive data
+  // Options: default, minimal, extended, all, custom
+  fields_type = "minimal"
+  
+  // Fetch logs every minute
+  pull_range = "1m"
+  
+  // Use 3 workers for parallel processing
+  workers = 3
+  
+  // Add labels to identify Cloudflare logs
+  labels = {
+    job    = "cloudflare-workers"
+    source = "cloudflare-api"
+  }
+  
+  forward_to = [loki.process.scrub_logs.receiver]
 }
 
 // Process logs to scrub sensitive data (PII, credentials, etc.)
