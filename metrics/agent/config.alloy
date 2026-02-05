@@ -26,6 +26,16 @@
 // ============================================
 
 // ============================================
+// LIVE DEBUGGING
+// ============================================
+// Enable live debugging to stream real-time component data to the Alloy UI
+// Access the UI at http://localhost:12345 to monitor pipeline health
+// Reference: https://grafana.com/docs/alloy/latest/troubleshoot/debug/#live-debugging-page
+livedebugging {
+  enabled = true
+}
+
+// ============================================
 // LOGGING PIPELINE
 // ============================================
 // Collect logs from all Docker containers on this host

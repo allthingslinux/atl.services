@@ -75,6 +75,26 @@ curl http://localhost:9100/metrics  # Node Exporter
 curl http://localhost:8080/metrics  # cAdvisor
 ```
 
+### 5. Access Live Debugging UI
+
+Alloy includes a built-in web UI for real-time debugging and monitoring:
+
+```bash
+# Access the Alloy UI (from the VPS or via SSH tunnel)
+http://localhost:12345
+```
+
+**Features:**
+- Real-time component status and health
+- Live data streaming from each pipeline stage
+- Configuration validation and syntax checking
+- Metrics about Alloy's own performance
+
+> **Note**: The live debugging UI is enabled by default in our configuration. To access it remotely, use SSH port forwarding:
+> ```bash
+> ssh -L 12345:localhost:12345 user@vps-hostname
+> ```
+
 ## Troubleshooting
 
 ### Logs Not Appearing in Loki
@@ -105,8 +125,18 @@ curl http://localhost:8080/metrics  # cAdvisor
 ### Container Won't Start
 
 1. **Check Docker socket permissions**: Ensure `/var/run/docker.sock` is accessible
+   ```bash
+   # The Alloy container needs read access to the Docker socket
+   ls -la /var/run/docker.sock
+   # Should show: srw-rw---- 1 root docker
+   
+   # If running Alloy as non-root, ensure the user is in the docker group
+   # OR run Alloy as root (as configured in our compose.yaml)
+   ```
 2. **Review compose logs**: `docker compose logs`
 3. **Verify .env file**: Ensure all required variables are set
+
+> **Security Note**: Our `compose.yaml` runs Alloy as `root` (UID 0) to access the Docker socket. This is required for `loki.source.docker` to read container logs. In production, ensure the VPS is properly secured and Alloy only has access to necessary resources.
 
 ## Architecture
 
@@ -159,6 +189,24 @@ curl http://localhost:8080/metrics  # cAdvisor
 - [Collect Logs with Loki](https://grafana.com/docs/alloy/latest/reference/components/loki/)
 - [Node Exporter Guide](https://prometheus.io/docs/guides/node-exporter/)
 - [cAdvisor Documentation](https://github.com/google/cadvisor/blob/master/docs/storage/prometheus.md)
+
+## Learning Resources
+
+If you're new to Grafana Alloy or want to learn more about the components used in this configuration, check out these official tutorials:
+
+### Getting Started
+- [Send Logs to Loki](https://grafana.com/docs/alloy/latest/tutorials/send-logs-to-loki/) - Learn the basics of log collection
+- [First Components and Standard Library](https://grafana.com/docs/alloy/latest/tutorials/first-components-and-stdlib/) - Understand component basics
+- [Logs and Relabeling Basics](https://grafana.com/docs/alloy/latest/tutorials/logs-and-relabeling-basics/) - Master relabeling techniques
+
+### Monitoring Examples
+- [Monitor Docker Containers](https://grafana.com/docs/alloy/latest/monitor/monitor-docker-containers/) - Docker metrics and logs collection
+- [Monitor Linux Servers](https://grafana.com/docs/alloy/latest/monitor/monitor-linux/) - Host-level monitoring with Node Exporter
+- [Monitor Logs from Files](https://grafana.com/docs/alloy/latest/monitor/monitor-logs-from-file/) - File-based log collection
+
+### Advanced Topics
+- [Process Logs](https://grafana.com/docs/alloy/latest/tutorials/processing-logs/) - Advanced log processing and filtering
+- [Monitor Structured Logs](https://grafana.com/docs/alloy/latest/monitor/monitor-structured-logs/) - Working with JSON logs
 
 ## Configuration
 - `config.alloy` scans for `node-exporter:9100` and `cadvisor:8080`.
