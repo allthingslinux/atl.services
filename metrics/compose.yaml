@@ -20,7 +20,6 @@ networks:
     name: npm
 
 volumes:
-  prometheus_data:
   loki_data:
   grafana_data:
   mimir_data:
@@ -48,7 +47,6 @@ services:
       - /etc/alloy/config.alloy
     depends_on:
       - loki
-      - prometheus
 
   # Grafana Loki - Log Aggregation
   loki:
@@ -71,29 +69,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Prometheus - Metrics Collection
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    restart: unless-stopped
-    networks:
-      - metrics
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/rules:/etc/prometheus/rules:ro
-      - ./prometheus/alerts:/etc/prometheus/alerts:ro
-      - prometheus_data:/prometheus
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=15d
-      - --web.console.libraries=/usr/share/prometheus/console_libraries
-      - --web.console.templates=/usr/share/prometheus/consoles
-      - --web.enable-lifecycle
-      - --web.enable-admin-api
-
   # Grafana Mimir - Long-term Metrics Storage
   mimir:
     image: grafana/mimir:latest
@@ -106,6 +81,7 @@ services:
       - "9095:9095" # gRPC
     volumes:
       - ./mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - ./mimir/rules:/data/rules:ro
       - mimir_data:/data
     environment:
       - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
@@ -113,8 +89,6 @@ services:
     command:
       - -config.file=/etc/mimir/mimir.yaml
       - -target=all # Monolithic mode
-    depends_on:
-      - prometheus
 
   # Grafana - Visualization
   grafana:
@@ -135,7 +109,6 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=false
     depends_on:
-      - prometheus
       - loki
       - mimir
 

@@ -12,6 +12,13 @@ server:
   grpc_listen_port: 9095
   log_level: info
 
+ruler:
+  rule_path: /data/rules
+  alertmanager_url: http://alertmanager:9093
+  ring:
+    kvstore:
+      store: memberlist
+
 # Storage configuration
 common:
   storage:
