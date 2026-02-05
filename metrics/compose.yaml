@@ -1,0 +1,246 @@
+version: '3.8'
+
+networks:
+  metrics:
+    driver: bridge
+  atl-chat:
+    external: true
+    name: atl-chat
+  tux:
+    external: true
+    name: tux
+  wiki-network:
+    external: true
+    name: local-wiki_wiki-network
+  iso-network:
+    external: true
+    name: iso_default
+  npm:
+    external: true
+    name: npm
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  mimir_data:
+
+
+services:
+  # Grafana Alloy - OpenTelemetry Collector + Prometheus Agent
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "12345:12345" # Alloy UI
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/lib/alloy:/var/lib/alloy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    depends_on:
+      - loki
+      - prometheus
+
+  # Grafana Loki - Log Aggregation
+  loki:
+    image: grafana/loki:3.6.0
+    container_name: loki
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/config.yml:/mnt/config/loki-config.yml:ro
+      - loki_data:/loki
+    command:
+      - -config.file=/mnt/config/loki-config.yml
+    user: "10001:10001" # Run as loki user (UID 10001)
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --web.enable-lifecycle
+      - --web.enable-admin-api
+
+  # Grafana Mimir - Long-term Metrics Storage
+  mimir:
+    image: grafana/mimir:latest
+    container_name: mimir
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "8080:8080" # HTTP API
+      - "9095:9095" # gRPC
+    volumes:
+      - ./mimir/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir_data:/data
+    environment:
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+    command:
+      - -config.file=/etc/mimir/mimir.yaml
+      - -target=all # Monolithic mode
+    depends_on:
+      - prometheus
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - metrics
+      - npm
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    depends_on:
+      - prometheus
+      - loki
+      - mimir
+
+  # Blackbox Exporter - Uptime Monitoring (HTTP/DNS/TCP)
+  blackbox:
+    image: prom/blackbox-exporter:latest
+    container_name: blackbox
+    restart: unless-stopped
+    ports:
+      - "9115:9115"
+    networks:
+      - metrics
+    command: --config.file=/config/blackbox.yml
+    volumes:
+      - ./blackbox/blackbox.yml:/config/blackbox.yml:ro
+    # Health check to ensure prober is running
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "http://localhost:9115/-/healthy" ]
+      interval: 30s
+      timeout: 3s
+
+  # Alertmanager - Alert Routing
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+
+  # cAdvisor - Container Metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    command:
+      - --docker_only
+      - --housekeeping_interval=10s
+      - --disable_metrics=percpu,sched,tcp,udp,diskIO
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "http://localhost:8080/healthz" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Service Exporters
+  postgres-exporter-xmpp:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter-xmpp
+    environment:
+      DATA_SOURCE_NAME: "postgresql://prosody:${XMPP_DB_PASSWORD}@atl-xmpp-db:5432/prosody?sslmode=disable"
+    networks:
+      - atl-chat
+      - metrics
+
+  postgres-exporter-tux:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter-tux
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${TUX_DB_USER}:${TUX_DB_PASSWORD}@tux-postgres:5432/${TUX_DB_NAME}?sslmode=disable"
+    networks:
+      - tux
+      - metrics
+
+  postgres-exporter-iso:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter-iso
+    environment:
+      DATA_SOURCE_NAME: "postgresql://admin:${ISO_DB_PASSWORD}@iso_postgres:5432/iso_archive?sslmode=disable"
+    networks:
+      - iso-network
+      - metrics
+
+  redis-exporter-tux:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter-tux
+    environment:
+      REDIS_ADDR: "tux-valkey:6379"
+    networks:
+      - tux
+      - metrics
+
+  redis-exporter-wiki:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter-wiki
+    environment:
+      REDIS_ADDR: "local-wiki-valkey:6379"
+    networks:
+      - wiki-network
+      - metrics

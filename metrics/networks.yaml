@@ -1,0 +1,28 @@
+networks:
+  metrics:
+    name: atl-metrics
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+  
+  # External networks to connect to other stacks
+  atl-chat:
+    external: true
+    name: atl-chat
+  
+  tux:
+    external: true
+    name: tux
+  
+  wiki-network:
+    external: true
+    name: local-wiki_wiki-network
+  
+  iso-network:
+    external: true
+    name: iso_default
+  
+  npm:
+    external: true
+    name: npm
