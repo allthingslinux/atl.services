@@ -1,6 +1,6 @@
-# AllThingsLinux Services (`atl.services`)
+# `atl.services`
 
-Centralized infrastructure and shared services for the **AllThingsLinux** ecosystem. This repository hosts the core observability stack, shared configurations, and utility services that power the broader network of ATL applications.
+Centralized infrastructure and shared services for the **All Things Linux** ecosystem. This repository hosts the core observability stack, shared configurations, and utility services that power the broader network of ATL applications.
 
 ## 🏗️ Architecture Overview
 
@@ -82,4 +82,4 @@ To connect a new VPS or service to this stack:
 
 ## 📄 License
 
-Internal infrastructure code for AllThingsLinux. All rights reserved.
+Internal infrastructure code for All Things Linux. All rights reserved.
