@@ -132,16 +132,20 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_SERVER_ROOT_URL=https://metrics.atl.services
       # SSO Configuration
-      - GF_AUTH_GENERIC_OAUTH_ENABLED=true
-      - GF_AUTH_GENERIC_OAUTH_NAME=Okta
-      - GF_AUTH_GENERIC_OAUTH_CLIENT_ID=${OKTA_CLIENT_ID}
-      - GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET=${OKTA_CLIENT_SECRET}
-      - GF_AUTH_GENERIC_OAUTH_SCOPES=openid profile email groups
-      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${OKTA_AUTH_URL}
-      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=${OKTA_TOKEN_URL}
-      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${OKTA_AUTH_URL}
-      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=${OKTA_TOKEN_URL}
-      - GF_AUTH_GENERIC_OAUTH_API_URL=${OKTA_API_URL}
+      # SSO Configuration
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=false
+      - GF_AUTH_OKTA_ENABLED=true
+      - GF_AUTH_OKTA_NAME=Okta
+      - GF_AUTH_OKTA_CLIENT_ID=${OKTA_CLIENT_ID}
+      - GF_AUTH_OKTA_CLIENT_SECRET=${OKTA_CLIENT_SECRET}
+      - GF_AUTH_OKTA_SCOPES=openid profile email groups offline_access
+      - GF_AUTH_OKTA_AUTH_URL=${OKTA_AUTH_URL}
+      - GF_AUTH_OKTA_TOKEN_URL=${OKTA_TOKEN_URL}
+      - GF_AUTH_OKTA_API_URL=${OKTA_API_URL}
+      - GF_AUTH_OKTA_USE_REFRESH_TOKEN=true
+      # RBAC & Group Sync
+      - GF_AUTH_OKTA_ROLE_ATTRIBUTE_PATH=contains(groups[*], 'Admins') && 'Admin' || contains(groups[*], 'Editors') && 'Editor' || 'Viewer'
+      - GF_AUTH_OKTA_ALLOWED_GROUPS=Admins,Editors,Viewers
       # Alert State History (Loki Backend)
       - GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED=true
       - GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND=loki
