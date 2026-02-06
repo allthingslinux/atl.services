@@ -21,9 +21,9 @@ datasources:
   - name: InfluxDB
     type: influxdb
     access: proxy
-    url: http://influxdb2:8086
+    url: http://influxdb3-core:8181
     jsonData:
-      version: Flux
+      version: Flux # InfluxDB 3 supports Flux via compatibility API
       organization: docs
       defaultBucket: home
     secureJsonData:

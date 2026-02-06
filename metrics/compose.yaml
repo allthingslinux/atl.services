@@ -23,6 +23,8 @@ volumes:
   loki_data:
   grafana_data:
   mimir_data:
+  influxdb_data:
+  influxdb_plugins:
 
 
 services:
@@ -154,9 +156,38 @@ services:
       - GF_FEATURE_TOGGLES_ENABLE=alertingCentralAlertHistory
       # Internal Monitoring
       - GF_METRICS_ENABLED=true
+      # Datasources Secrets
+      - INFLUXDB_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
     depends_on:
       - loki
       - mimir
+
+  # InfluxDB 3 Core - Time-series Database
+  influxdb3-core:
+    image: influxdb:3-core
+    container_name: influxdb3-core
+    restart: unless-stopped
+    networks:
+      - metrics
+    ports:
+      - "8181:8181"
+    command:
+      - influxdb3
+      - serve
+      - --node-id=node0
+      - --object-store=file
+      - --data-dir=/var/lib/influxdb3/data
+      - --plugin-dir=/var/lib/influxdb3/plugins
+    volumes:
+      - influxdb_data:/var/lib/influxdb3/data
+      - influxdb_plugins:/var/lib/influxdb3/plugins
+    environment:
+      - INFLUXDB_ADMIN_TOKEN=${INFLUXDB_ADMIN_TOKEN}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8181/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Blackbox Exporter - Uptime Monitoring (HTTP/DNS/TCP)
   blackbox:

@@ -224,7 +224,7 @@ prometheus.scrape "local_services" {
     {"__address__" = "gatus:8080", "job" = "gatus"},
     {"__address__" = "blocky:4000", "job" = "blocky"},
     {"__address__" = "sftpgo:10000", "job" = "sftpgo"},
-    {"__address__" = "influxdb2:8086", "job" = "influxdb2"},
+    {"__address__" = "influxdb3-core:8181", "job" = "influxdb3"},
   ]
   forward_to = [prometheus.remote_write.default.receiver]
 }
