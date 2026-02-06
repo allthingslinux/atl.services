@@ -5,6 +5,7 @@ datasources:
     type: prometheus
     access: proxy
     url: http://mimir:8080/prometheus
+    uid: mimir
     isDefault: true
     editable: false
   

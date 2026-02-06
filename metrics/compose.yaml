@@ -139,7 +139,14 @@ services:
       - GF_AUTH_GENERIC_OAUTH_SCOPES=openid profile email groups
       - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${OKTA_AUTH_URL}
       - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=${OKTA_TOKEN_URL}
+      - GF_AUTH_GENERIC_OAUTH_AUTH_URL=${OKTA_AUTH_URL}
+      - GF_AUTH_GENERIC_OAUTH_TOKEN_URL=${OKTA_TOKEN_URL}
       - GF_AUTH_GENERIC_OAUTH_API_URL=${OKTA_API_URL}
+      # Alert State History (Loki Backend)
+      - GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED=true
+      - GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND=loki
+      - GF_UNIFIED_ALERTING_STATE_HISTORY_LOKI_REMOTE_URL=http://loki:3100
+      - GF_FEATURE_TOGGLES_ENABLE=alertingCentralAlertHistory
     depends_on:
       - loki
       - mimir
@@ -162,21 +169,6 @@ services:
       interval: 30s
       timeout: 3s
 
-  # Alertmanager - Alert Routing
-  alertmanager:
-    image: prom/alertmanager:latest
-    container_name: alertmanager
-    restart: unless-stopped
-    networks:
-      - metrics
-    ports:
-      - "9093:9093"
-    volumes:
-      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
-    command:
-      - --config.file=/etc/alertmanager/config.yml
-
-  # cAdvisor - Container Metrics
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     container_name: cadvisor

@@ -229,6 +229,14 @@ prometheus.scrape "local_services" {
   forward_to = [prometheus.remote_write.default.receiver]
 }
 
+// Scrape Grafana for meta-monitoring (Alerting state, performance)
+prometheus.scrape "grafana" {
+  targets = [{"__address__" = "grafana:3000"}]
+  job_name = "grafana"
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+
 // ============================================
 // Cross-Stack Service Metrics
 // ============================================
