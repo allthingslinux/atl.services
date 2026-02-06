@@ -17,7 +17,13 @@ contactPoints:
         settings:
           url: "${DISCORD_WEBHOOK_URL}"
           message: |
-            {{ template "default.message" . }}
+            {{ range .Alerts }}
+            **Alert:** {{ .Labels.alertname }}
+            **Severity:** {{ .Labels.severity }}
+            **Summary:** {{ .Annotations.summary }}
+            **Description:** {{ .Annotations.description }}
+            **Runbook:** <{{ .Annotations.runbook_url }}|Link>
+            {{ end }}
 
   - orgId: 1
     name: Email
