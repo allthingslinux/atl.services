@@ -13,6 +13,9 @@ datasources:
     type: loki
     access: proxy
     url: http://loki:3100
+    jsonData:
+      manageAlerts: true
+      maxLines: 1000
     editable: false
   
   - name: InfluxDB
