@@ -175,31 +175,3 @@ services:
       test: [ "CMD", "wget", "--spider", "http://localhost:9115/-/healthy" ]
       interval: 30s
       timeout: 3s
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
-    restart: unless-stopped
-    networks:
-      - metrics
-    ports:
-      - "8081:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-    devices:
-      - /dev/kmsg
-    privileged: true
-    command:
-      - --docker_only
-      - --housekeeping_interval=10s
-      - --disable_metrics=percpu,sched,tcp,udp,diskIO
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "http://localhost:8080/healthz" ]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-  # Service Exporters
