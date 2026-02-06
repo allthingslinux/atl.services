@@ -151,6 +151,11 @@ services:
       - GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND=loki
       - GF_UNIFIED_ALERTING_STATE_HISTORY_LOKI_REMOTE_URL=http://loki:3100
       - GF_FEATURE_TOGGLES_ENABLE=alertingCentralAlertHistory
+      # Internal Monitoring & Tracing
+      - GF_METRICS_ENABLED=true
+      - GF_TRACING_OPENTELEMETRY_OTLP_ADDRESS=alloy:4317
+      - GF_TRACING_OPENTELEMETRY_OTLP_PROTOCOL=grpc
+      - GF_TRACING_OPENTELEMETRY_OTLP_PROPAGATION=w3c
     depends_on:
       - loki
       - mimir
